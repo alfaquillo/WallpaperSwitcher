@@ -1,103 +1,124 @@
 #!/usr/bin/env bash
 
+# Configuración de colores
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
-SRC_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )";
+
+# Directorios y rutas
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+EXTENSION_ID="WallpaperSwitcher@Rishu"
 LOG_DIR="${SRC_DIR}/log"
-LOG_FILE="${LOG_DIR}/build.log";
-mkdir -p "${LOG_DIR}"
-if [[ -f "${LOG_FILE}" ]]; then
-  echo '' >> "${LOG_FILE}"
-  echo "$(date '+%d/%m/%Y %H:%M:%S')" >> "${LOG_FILE}"
-  echo '' >> "${LOG_FILE}"
-else
-  touch "${LOG_FILE}"
-  echo "$(date '+%d/%m/%Y %H:%M:%S')" >> "${LOG_FILE}"
-  echo '' >> "${LOG_FILE}"
-fi
-
+LOG_FILE="${LOG_FILE:-${LOG_DIR}/install.log}"
 INSTALL_DIR="${HOME}/.local/share/gnome-shell/extensions"
+
+# Configuración para root
 if [[ "$(id -u)" -eq 0 ]]; then
-  chown "${SUDO_USER}":"${SUDO_USER}" -R "${LOG_DIR}"
-  INSTALL_DIR="/usr/share/gnome-shell/extensions"
+    INSTALL_DIR="/usr/share/gnome-shell/extensions"
 fi
-mkdir -p "${INSTALL_DIR}"
 
-# print <arg>
+# Crear directorios necesarios
+mkdir -p "${LOG_DIR}" "${INSTALL_DIR}"
+
+# Funciones de utilidad
 print() {
-  echo -e "${NC}[+] ${1}${NC}"
-  echo -e "[+] ${1}" &>> "$LOG_FILE"
+    echo -e "${NC}[+] ${1}${NC}"
+    echo -e "[+] ${1}" >> "${LOG_FILE}"
 }
 
-# print_warning <arg>
 print_warning() {
-  echo -e "${NC}[${YELLOW}!${NC}] ${1}${NC}"
-  echo -e "[!] ${1}" &>> "$LOG_FILE"
+    echo -e "${NC}[${YELLOW}!${NC}] ${1}${NC}"
+    echo -e "[!] ${1}" >> "${LOG_FILE}"
 }
 
-# print_failed <arg>
 print_failed() {
-  echo -e "${NC}[${RED}x${NC}] ${1}${NC}"
-  echo -e "[x] ${1}" &>> "$LOG_FILE"
+    echo -e "${NC}[${RED}x${NC}] ${1}${NC}"
+    echo -e "[x] ${1}" >> "${LOG_FILE}"
+    exit 1
 }
 
-# print_success <arg>
 print_success() {
-  echo -e "${NC}[${GREEN}\xE2\x9C\x94${NC}] ${1}${NC}"
-  echo -e "[✔] ${1}" &>> "$LOG_FILE"
+    echo -e "${NC}[${GREEN}✓${NC}] ${1}${NC}"
+    echo -e "[✓] ${1}" >> "${LOG_FILE}"
 }
 
-# print_suggestion <arg>
-print_suggestion() {
-  echo -e "${NC}[${BLUE}#${NC}] ${1}${NC}"
-  echo -e "[#] ${1}" &>> "$LOG_FILE"
+# Verificar dependencias
+check_dependencies() {
+    local missing=()
+    local deps=("glib-compile-schemas" "gnome-shell" "zip")
+    
+    for dep in "${deps[@]}"; do
+        if ! command -v "${dep}" >/dev/null 2>&1; then
+            missing+=("${dep}")
+        fi
+    done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        print_warning "Dependencias faltantes: ${missing[*]}"
+        return 1
+    fi
+    return 0
 }
 
-# is_failed <success_message> <failed_message>
-is_failed() {
-  if [[ "$?" -eq 0 ]]; then
-    print_success "${1}"
-  else
-    print_failed "${2}"
-  fi
+# Instalar extensión
+install_extension() {
+    print "Instalando extensión en ${INSTALL_DIR}"
+    
+    # Eliminar instalación previa
+    rm -rf "${INSTALL_DIR}/${EXTENSION_ID}"
+    
+    # Copiar archivos
+    if ! cp -rf "${SRC_DIR}/src" "${INSTALL_DIR}/${EXTENSION_ID}"; then
+        print_failed "Error al copiar archivos"
+    fi
+
+    # Compilar esquemas GSettings
+    if ! glib-compile-schemas --strict \
+         --targetdir="${INSTALL_DIR}/${EXTENSION_ID}/schemas" \
+         "${INSTALL_DIR}/${EXTENSION_ID}/schemas"; then
+        print_warning "Error al compilar esquemas GSettings"
+    fi
+
+    # Crear archivo de log
+    mkdir -p "${HOME}/.local/var/log/"
+    touch "${HOME}/.local/var/log/WallpaperSwitcher.log"
+
+    # Configurar permisos
+    chmod -R 755 "${INSTALL_DIR}/${EXTENSION_ID}"
+
+    print_success "Extensión instalada correctamente"
+    print "Reinicia GNOME Shell con Alt+F2, luego escribe 'r' y presiona Enter"
 }
 
-# is_warning <success_message> <warning_message>
-is_warning() {
-  if [[ "$?" -eq 0 ]]; then
-    print_success "${1}"
-  else
-    print_warning "${2}"
-  fi
+# Crear paquete ZIP
+create_package() {
+    print "Creando paquete ZIP para distribución"
+    
+    local out_dir="${SRC_DIR}/out"
+    mkdir -p "${out_dir}"
+    
+    if ! cd "${SRC_DIR}/src" && \
+       zip -6rX "${out_dir}/${EXTENSION_ID}.zip" ./*; then
+        print_failed "Error al crear el paquete ZIP"
+    fi
+
+    cd ..
+    print_success "Paquete creado: ${out_dir}/${EXTENSION_ID}.zip"
 }
 
-# install extension
-install() {
-  print "Installing to ${INSTALL_DIR}"
-  rm -rf "${INSTALL_DIR}/WallpaperSwitcher@Rishu"
-  cp -rf "${SRC_DIR}/src" "${INSTALL_DIR}/WallpaperSwitcher@Rishu" &>> "$LOG_FILE"
-  glib-compile-schemas --strict --targetdir="${INSTALL_DIR}/WallpaperSwitcher@Rishu/schemas" "${INSTALL_DIR}/WallpaperSwitcher@Rishu/schemas"
-  mkdir -p "$HOME/.local/var/log/"
-  touch "$HOME/.local/var/log/WallpaperSwitcher.log"
-  is_failed "Done" "Skipping: Can not install to ${INSTALL_DIR}. See log for more info."
-}
+# Inicializar log
+echo -e "\n$(date '+%d/%m/%Y %H:%M:%S')\n" >> "${LOG_FILE}"
 
-# build for release
-build() {
-  print "Creating WallpaperSwitcher@Rishu.zip"
-  mkdir -p "${SRC_DIR}/out"
-  cd "src"
-  zip -6rX "$SRC_DIR/out/WallpaperSwitcher@Rishu.zip" * &>> "$LOG_FILE"
-  cd ..
-  is_failed "Done" "Skipping: Creating zip is failed. See log for more info."
-}
+# Proceso principal
+check_dependencies
 
-# Let's start
-if [[ "${1}" == "-b" ]]; then
-  build
-else
-  install
-fi
+case "${1}" in
+    -b|--build)
+        create_package
+        ;;
+    *)
+        install_extension
+        ;;y
+        
