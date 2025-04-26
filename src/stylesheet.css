@@ -1,3 +1,97 @@
-.apply-button:hover{
-    background:none;
-}
+/* stylesheet.css para WallpaperSwitcher - Versión compatible con GNOME 48 */
+
+/* Estilos básicos para la ventana de preferencias */
+window {
+    background-color: transparent;
+  }
+  
+  /* Botones planos */
+  button.flat {
+    transition: all 100ms ease-in-out;
+    background: none;
+    border: none;
+    box-shadow: none;
+  }
+  
+  button.flat:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+  
+  button.flat:active {
+    background-color: rgba(0, 0, 0, 0.2);
+  }
+  
+  /* Entrada de texto */
+  entry {
+    padding: 6px 12px;
+    border-radius: 6px;
+    margin: 3px;
+    border: 1px solid #ccc;
+  }
+  
+  entry:focus {
+    border-color: #3584e4;
+    box-shadow: 0 0 0 1px #3584e4;
+  }
+  
+  /* Estilo para entradas válidas */
+  entry.valid {
+    border-color: #26a269;
+  }
+  
+  /* Estilo para entradas inválidas */
+  entry.invalid {
+    border-color: #e01b24;
+  }
+  
+  /* Iconos en la entrada */
+  entry image {
+    padding: 6px;
+  }
+  
+  /* Filas de preferencias */
+  row {
+    padding: 6px 0;
+  }
+  
+  /* Grupo de errores */
+  #error-group {
+    background-color: #f6f5f4;
+    border-radius: 12px;
+    margin: 6px 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  
+  #error-view {
+    color: #1c1c1c;
+    background-color: rgba(53, 132, 228, 0.1);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 6px;
+  }
+  
+  /* Modo oscuro - se aplicará automáticamente en GNOME */
+  .night-mode #error-group {
+    background-color: #2d2d2d;
+  }
+  
+  .night-mode #error-view {
+    background-color: rgba(53, 132, 228, 0.15);
+    color: #ffffff;
+  }
+  
+  /* Botón de aplicar (manteniendo compatibilidad) */
+  .apply-button:hover {
+    background: none;
+    opacity: 0.8;
+  }
+  
+  /* Estilos específicos para el combo box */
+  combobox box {
+    padding: 6px;
+  }
+  
+  /* Estilo para el spinner */
+  spinbutton {
+    padding: 6px;
+  }

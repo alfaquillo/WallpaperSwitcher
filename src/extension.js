@@ -1,18 +1,15 @@
 /*
 * Name: Wallpaper Switcher
 * Description: Extension to automatically Change wallpaper after a given interval
-* Author: Rishu Raj
+* Author: alfaquillo
 */
 
 ////////////////////////////////////////////////////////////
 //Const Variables
-const Gio = imports.gi.Gio;
-const GLib  = imports.gi.GLib;
-const Mainloop = imports.mainloop;
+const { Gio, GLib } = imports.gi;
 const ExtensionUtils = imports.misc.extensionUtils;
-const ExtensionManager = imports.ui.main.extensionManager;
-const Me             = ExtensionUtils.getCurrentExtension();
-const lib            = Me.imports.lib;
+const Me = ExtensionUtils.getCurrentExtension();
+const lib = Me.imports.lib;
 
 ////////////////////////////////////////////////////////////
 // Global Variables
@@ -22,122 +19,130 @@ let handlerMode;
 let handlerFrequency;
 let handlerExtensionManager;
 let handlerWallpaperOverlaySetting;
-let timeout;
+let timeoutId;
 let imageIndex = -1;
 
-function changeWallpaperSequentially(wallpaperSetter){
-  return ()=>{
-    try{
+function changeWallpaperSequentially(wallpaperSetter) {
+  return () => {
+    try {
       let wallpaperList = lib.getWallpaperList();
-      if(wallpaperList.length == 0){
-        return true;
+      if (wallpaperList.length == 0) {
+        return GLib.SOURCE_CONTINUE;
       }
-      imageIndex = imageIndex+1;
-      if(imageIndex >= wallpaperList.length) imageIndex = 0;
-      wallpaperSetter(wallpaperList[imageIndex]);     
-      return true;
-    }catch{
+      imageIndex = imageIndex + 1;
+      if (imageIndex >= wallpaperList.length) imageIndex = 0;
+      wallpaperSetter(wallpaperList[imageIndex]);
+      return GLib.SOURCE_CONTINUE;
+    } catch {
       updateMainloop();
+      return GLib.SOURCE_CONTINUE;
     }
   }
-}
-function changeWallpaperRandomly(wallpaperSetter){
-  return ()=>{
-    try{
-      let wallpaperList = lib.getWallpaperList();
-      if(wallpaperList.length == 0){
-        return true;
-      }
-      let idx = Math.floor(Math.random() * wallpaperList.length);
-      wallpaperSetter(wallpaperList[idx]);   
-      return true;
-    } catch{
-      updateMainloop();
-    }
-    
-  }
-  
 }
 
-function updateMainloop(checkWO = 0){
-  Mainloop.source_remove(timeout);
+function changeWallpaperRandomly(wallpaperSetter) {
+  return () => {
+    try {
+      let wallpaperList = lib.getWallpaperList();
+      if (wallpaperList.length == 0) {
+        return GLib.SOURCE_CONTINUE;
+      }
+      let idx = Math.floor(Math.random() * wallpaperList.length);
+      wallpaperSetter(wallpaperList[idx]);
+      return GLib.SOURCE_CONTINUE;
+    } catch {
+      updateMainloop();
+      return GLib.SOURCE_CONTINUE;
+    }
+  }
+}
+
+function updateMainloop(checkWO = 0) {
+  if (timeoutId) {
+    GLib.Source.remove(timeoutId);
+  }
+  
   let wallpaperSetter = lib.getWallpaperSetterFunction();
   lib.setErrorMsg("");
-  try{
-    if(checkWO)
-    {
+  
+  try {
+    if (checkWO) {
       let newSetting = lib.getWallpaperOverlaySetting();
-      if(newSetting != null)
-      {
-        if(wallpaperOverlaySetting != newSetting){
-          // this means wallpaper overlay is installed /reinstalled /updated
-          if(handlerWallpaperOverlaySetting != null && wallpaperOverlaySetting != null)
-          wallpaperOverlaySetting.disconnect(handlerWallpaperOverlaySetting);
+      if (newSetting != null) {
+        if (wallpaperOverlaySetting != newSetting) {
+          if (handlerWallpaperOverlaySetting != null && wallpaperOverlaySetting != null) {
+            wallpaperOverlaySetting.disconnect(handlerWallpaperOverlaySetting);
+          }
           wallpaperOverlaySetting = newSetting;
-          handlerWallpaperOverlaySetting = wallpaperOverlaySetting.connect("changed::is-auto-apply",() => {
+          handlerWallpaperOverlaySetting = wallpaperOverlaySetting.connect("changed::is-auto-apply", () => {
             updateMainloop(1);
           });
         }
-        if(wallpaperOverlaySetting.get_boolean("is-auto-apply")){
-          // if auto apply is on
+        if (wallpaperOverlaySetting.get_boolean("is-auto-apply")) {
           wallpaperSetter = lib.getWallpaperWithOverlaySetterFunction(wallpaperOverlaySetting);
-          lib.setErrorMsg("UWO"); // Using Wallpaper Overlay
-        }      
+          lib.setErrorMsg("UWO");
+        }
       }
     }
-  }
-  catch{}
-  timeout = Mainloop.timeout_add_seconds(lib.getFrequency(),
-  lib.getSwitchingMode()? changeWallpaperRandomly(wallpaperSetter):
-  changeWallpaperSequentially(wallpaperSetter)
+  } catch (e) {}
+  
+  timeoutId = GLib.timeout_add_seconds(
+    GLib.PRIORITY_DEFAULT,
+    lib.getFrequency(),
+    lib.getSwitchingMode() ? changeWallpaperRandomly(wallpaperSetter) : 
+                            changeWallpaperSequentially(wallpaperSetter)
   );
 }
-
-
 
 ////////////////////////////////////////////////////////////
 // Extension.js default functions
 
 function init() {
-
+  // No changes needed here
 }
 
 function enable() {
-  try{
+  try {
     mySetting = ExtensionUtils.getSettings('org.gnome.shell.extensions.WallpaperSwitcher');
     updateMainloop();
     wallpaperList = lib.getWallpaperList();
-    handlerMode = mySetting.connect("changed::switching-mode",()=>{
+    
+    handlerMode = mySetting.connect("changed::switching-mode", () => {
       updateMainloop(0);
     });
-    handlerFrequency = mySetting.connect("changed::frequency",()=>{
+    
+    handlerFrequency = mySetting.connect("changed::frequency", () => {
       updateMainloop(0);
     });
-    handlerExtensionManager = ExtensionManager.connect("extension-state-changed",() => {
+    
+    handlerExtensionManager = ExtensionManager.connect("extension-state-changed", () => {
       updateMainloop(1);
     });
+  } catch (e) {
+    lib.saveExceptionLog(e);
   }
-  catch(e){lib.saveExceptionLog(e)}
 }
 
 function disable() {
-  if(handlerFrequency != null)
-  mySetting.disconnect(handlerFrequency);
-  if(handlerMode != null)
-  mySetting.disconnect(handlerMode);
-  if(handlerExtensionManager != null)
-  ExtensionManager.disconnect(handlerExtensionManager);
-  if(handlerWallpaperOverlaySetting != null && wallpaperOverlaySetting != null)
-  {
-    wallpaperOverlaySetting.disconnect(handlerWallpaperOverlaySetting);
+  if (handlerFrequency != null) {
+    mySetting.disconnect(handlerFrequency);
+  }
+  if (handlerMode != null) {
+    mySetting.disconnect(handlerMode);
+  }
+  if (handlerExtensionManager != null) {
+    ExtensionManager.disconnect(handlerExtensionManager);
+  }
+  if (handlerWallpaperOverlaySetting != null && wallpaperOverlaySetting != null) {
     wallpaperOverlaySetting.disconnect(handlerWallpaperOverlaySetting);
   }
-  Mainloop.source_remove(timeout);
+  if (timeoutId) {
+    GLib.Source.remove(timeoutId);
+  }
+  
   handlerExtensionManager = null;
   handlerFrequency = null;
   handlerMode = null;
-  timeout = null;
+  timeoutId = null;
   mySetting = null;
 }
-
-

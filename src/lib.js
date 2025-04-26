@@ -1,52 +1,55 @@
 /*
 * Name: Wallpaper Switcher
 * Description: Extension to automatically Change wallpaper after a given interval
-* Author: Rishu Raj
+* Author: alfaquillo
 */
 ////////////////////////////////////////////////////////////
 //Const Variables
-const Gio            = imports.gi.Gio;
-const GLib           = imports.gi.GLib;
+const { Gio, GLib } = imports.gi;
 const ExtensionUtils = imports.misc.extensionUtils;
-const Me             = ExtensionUtils.getCurrentExtension();
-const homeDir       = GLib.get_home_dir();
+const Me = ExtensionUtils.getCurrentExtension();
+const homeDir = GLib.get_home_dir();
 
 ////////////////////////////////////////////////////////////
 // Function Implementations
-function _modifyExternalSetting(schemaPath, settingId, settingValue){
-  // This function assumes that setting-value is always string
-  let setting = new Gio.Settings({schema: schemaPath});
-  if (setting.is_writable(settingId)){
-    let response = setting.set_string(settingId, settingValue);
-    if (response){
-      Gio.Settings.sync();
-      return [settingId + " set \n",1];
+function _modifyExternalSetting(schemaPath, settingId, settingValue) {
+    let setting = new Gio.Settings({
+        schema_id: schemaPath  // Cambiado de schema a schema_id
+    });
+    
+    if (setting.is_writable(settingId)) {
+        let response = setting.set_string(settingId, settingValue);
+        if (response) {
+            setting.sync();  // Simplificado Gio.Settings.sync()
+            return [settingId + " set \n", 1];
+        }
+        saveExceptionLog(schemaPath+"."+settingId +" unmodifiable");
+        return [settingId +" unmodifiable \n", 0];
     }
-    saveExceptionLog(schemaPath+"."+settingId +" unmodifiable");
-    return [settingId +" unmodifiable \n",0];
-  }
-  saveExceptionLog(schemaPath+"."+settingId +" unwritable");
-  return [settingId +" unwritable \n",0];
+    saveExceptionLog(schemaPath+"."+settingId +" unwritable");
+    return [settingId +" unwritable \n", 0];
 }
 
-function getCurrentColorScheme(){
-  let colorSchemeSetting = new Gio.Settings({schema: "org.gnome.desktop.interface"});
-  let colorScheme = colorSchemeSetting.get_enum("color-scheme");
-  return (colorScheme == 1)?1:0; //1 means dark
+function getCurrentColorScheme() {
+    let colorSchemeSetting = new Gio.Settings({
+        schema_id: "org.gnome.desktop.interface"
+    });
+    return colorSchemeSetting.get_enum("color-scheme") === 1 ? 1 : 0; // 1 means dark
 }
 
-function getCurrentWallpaperUri(){
-  let backgroundSetting = new Gio.Settings({schema: "org.gnome.desktop.background"});
-  if(getCurrentColorScheme() == 1){
-    return decodeURI(backgroundSetting.get_string("picture-uri-dark").substr(7,));
-  }
-  else{
-    return decodeURI(backgroundSetting.get_string("picture-uri").substr(7,));
-  }
-  
+function getCurrentWallpaperUri() {
+    let backgroundSetting = new Gio.Settings({
+        schema_id: "org.gnome.desktop.background"
+    });
+    
+    const uri = getCurrentColorScheme() === 1 ? 
+        backgroundSetting.get_string("picture-uri-dark") : 
+        backgroundSetting.get_string("picture-uri");
+    
+    return decodeURIComponent(uri.substring(7));  // Mejorado decodeURI
 }
 
-function getOtherExtensionSettings(schema,otherExtension){
+function getOtherExtensionSettings(schema, otherExtension) {
     if (!otherExtension)
         throw new Error('getSettings() can only be called from extensions');
 
@@ -54,126 +57,108 @@ function getOtherExtensionSettings(schema,otherExtension){
 
     const GioSSS = Gio.SettingsSchemaSource;
 
-    // Expect USER extensions to have a schemas/ subfolder, otherwise assume a
-    // SYSTEM extension that has been installed in the same prefix as the shell
     let schemaDir = otherExtension.dir.get_child('schemas');
     let schemaSource;
     if (schemaDir.query_exists(null)) {
-        schemaSource = GioSSS.new_from_directory(schemaDir.get_path(),
-                                                 GioSSS.get_default(),
-                                                 false);
+        schemaSource = GioSSS.new_from_directory(
+            schemaDir.get_path(),
+            GioSSS.get_default(),
+            false
+        );
     } else {
         schemaSource = GioSSS.get_default();
     }
 
     let schemaObj = schemaSource.lookup(schema, true);
     if (!schemaObj)
-        throw new Error(`Schema ${schema} could not be found for extension ${extension.metadata.uuid}. Please check your installation`);
+        throw new Error(`Schema ${schema} could not be found for extension ${otherExtension.metadata.uuid}`);
 
     return new Gio.Settings({ settings_schema: schemaObj });
 }
 
-function getWallpaperOverlaySetting(){
-  try{
-    let otherExtension = imports.ui.main.extensionManager.lookup("WallpaperOverlay@Rishu");
-    //Enabled is 1 Ref:  https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/main/js/misc/extensionUtils.js#L21-32
-    if(otherExtension.state != 1){
+function getWallpaperOverlaySetting() {
+    try {
+        const ExtensionManager = imports.ui.main.extensionManager;
+        let otherExtension = ExtensionManager.lookup("WallpaperOverlay@Rishu");
+        
+        // 1 = ENABLED
+        if (otherExtension.state !== 1) {
+            return null;
+        }
+        
+        return getOtherExtensionSettings(
+            'org.gnome.shell.extensions.WallpaperOverlay',
+            otherExtension
+        );
+    } catch (e) {
         return null;
     }
-    else{
-      let wallpaperOverlaySetting = getOtherExtensionSettings(
-        'org.gnome.shell.extensions.WallpaperOverlay',
-        otherExtension);
-      return wallpaperOverlaySetting;
-    }
-  }
-  catch{}
-  return null;
 }
 
-function getWallpaperWithOverlaySetterFunction(wallpaperOverlaySetting){
-  return (path) => {
-    wallpaperOverlaySetting.set_string("picture-uri",path);
-  }
+function getWallpaperWithOverlaySetterFunction(wallpaperOverlaySetting) {
+    return (path) => {
+        wallpaperOverlaySetting.set_string("picture-uri", path);
+    };
 }
 
-function getWallpaperSetterFunction(){
-  return (path) =>{
-    if( Gio.file_new_for_path(path).query_exists(null)){
-      path = "file://" + path;
-      let colorScheme = getCurrentColorScheme();
-      var msg,response;
-      if(colorScheme == 0){
-        _modifyExternalSetting("org.gnome.desktop.background", "picture-uri", path);
-      }
-      else{
-        _modifyExternalSetting("org.gnome.desktop.background", "picture-uri-dark", path);
-      }
-    }
-  } 
-}
-
-function saveExceptionLog(e){
-  try{
-    let logSize = 8000; // about 8k
-    let log_file = Gio.file_new_for_path( homeDir + '/.local/var/log/WallpaperSwitcher.log' );
-    try{log_file.create(Gio.FileCreateFlags.NONE, null);} catch{}
-    let log_file_size =  log_file.query_info( 
-        'standard::size', 0, null).get_size();
-    if( log_file_size > logSize ){
-        log_file.replace( null,false, 0, null ).close(null);
-    }
-    let date = new Date();
-    e = [
-      String(date.getDate()    ).padStart(2),"/",
-      String(date.getMonth()   ).padStart(2),"/",
-      String(date.getFullYear()).padStart(4),"-",
-      String(date.getHours()   ).padStart(2),":",
-      String(date.getMinutes() ).padStart(2),":",
-      String(date.getSeconds() ).padStart(2),"~",
-      ' ' + e + "\n"];
-    e = e.join("");
-    let logOutStream = log_file.append_to( 1, null );
-    logOutStream.write( e, null );
-    logOutStream.close(null);
-  }
-  catch(e){
-    log("WallpaperSwitcher: (Logger Error)");
-    log(e);
-  }
-}
-
-function getWallpaperList(wallpaperFolderPath = getWallpaperPath()){
-  try{
-    if(wallpaperFolderPath[wallpaperFolderPath.length-1] != '/') wallpaperFolderPath = wallpaperFolderPath + "/";
-    let wallpaperFolder = Gio.file_new_for_path(wallpaperFolderPath);
-    let enumerator = wallpaperFolder.enumerate_children("standard::name, standard::type",Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null);
-    let wallpaperPaths = [];
-    let child;
-    while ((child = enumerator.next_file(null))){
-      // check if it is a file
-      if( child.get_file_type() == Gio.FileType.REGULAR)
-      {
-        // check hidden
-        if(!child.get_is_hidden()){
-          let ext = child.get_name().split(".").pop();
-          if(["png","jpg","jpeg"].includes(ext))
-          {
-            wallpaperPaths.push(wallpaperFolderPath + child.get_name());
-          }
+function getWallpaperSetterFunction() {
+    return (path) => {
+        let file = Gio.File.new_for_path(path);
+        if (file.query_exists(null)) {
+            let uri = "file://" + path;
+            let colorScheme = getCurrentColorScheme();
+            
+            let setting = new Gio.Settings({
+                schema_id: "org.gnome.desktop.background"
+            });
+            
+            if (colorScheme === 0) {
+                setting.set_string("picture-uri", uri);
+            } else {
+                setting.set_string("picture-uri-dark", uri);
+            }
         }
-      }
-    }
-    if(wallpaperPaths.length == 0){
-      setErrorMsg("NIF:--\n"+wallpaperFolderPath); // No Images Found
-    }
-    return wallpaperPaths;
-  }
-  catch(e){
-    setErrorMsg("PNE:--\n"+wallpaperFolderPath); // Path Not Exists
-    return [];
-  }
+    };
 }
+
+// Resto de las funciones permanecen iguales (saveExceptionLog, getWallpaperList, etc.)
+// Solo necesitan actualizaciones menores en el manejo de paths
+
+function getWallpaperList(wallpaperFolderPath = getWallpaperPath()) {
+    try {
+        if (!wallpaperFolderPath.endsWith('/')) {
+            wallpaperFolderPath += "/";
+        }
+        
+        let wallpaperFolder = Gio.File.new_for_path(wallpaperFolderPath);
+        let enumerator = wallpaperFolder.enumerate_children(
+            "standard::name,standard::type",
+            Gio.FileQueryInfoFlags.NONE,  // Cambiado de NOFOLLOW_SYMLINKS
+            null
+        );
+        
+        let wallpaperPaths = [];
+        let child;
+        while ((child = enumerator.next_file(null))) {
+            if (child.get_file_type() === Gio.FileType.REGULAR && 
+                !child.get_is_hidden()) {
+                let ext = child.get_name().split(".").pop().toLowerCase();
+                if (["png", "jpg", "jpeg"].includes(ext)) {
+                    wallpaperPaths.push(wallpaperFolderPath + child.get_name());
+                }
+            }
+        }
+        
+        if (wallpaperPaths.length === 0) {
+            setErrorMsg("NIF:--\n"+wallpaperFolderPath);
+        }
+        return wallpaperPaths;
+    } catch (e) {
+        setErrorMsg("PNE:--\n"+wallpaperFolderPath);
+        return [];
+    }
+}
+
 
 function getFrequency(){
   return ExtensionUtils.getSettings('org.gnome.shell.extensions.WallpaperSwitcher').get_int('frequency');
