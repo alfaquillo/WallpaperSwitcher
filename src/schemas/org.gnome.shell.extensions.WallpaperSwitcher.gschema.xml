@@ -11,17 +11,17 @@
     
     <!-- Intervalo de cambio en segundos -->
     <key name="frequency" type="i">
-      <default>300</default> <!-- 5 minutos por defecto -->
-      <range min="30" max="86400"/> <!-- Mínimo 30s, máximo 24h -->
+      <default>300</default>
+      <range min="30" max="86400"/>
       <summary>Wallpaper change interval</summary>
       <description>Time in seconds between automatic wallpaper changes</description>
     </key>
     
-    <!-- Modo de cambio -->
-    <key name="switching-mode" type="i" enum="org.gnome.shell.extensions.WallpaperSwitcher.mode">
+    <!-- Modo de cambio - Versión corregida -->
+    <key name="switching-mode" type="i">
       <default>1</default>
       <summary>Wallpaper switching mode</summary>
-      <description>Sequential (0) or Random (1) wallpaper rotation</description>
+      <description>0 = Sequential, 1 = Random</description>
     </key>
 
     <!-- Ruta de wallpapers -->
